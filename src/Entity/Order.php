@@ -8,6 +8,11 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
+/**
+ * @ORM\Entity(repositoryClass=OrderRepository::class)
+ * @ORM\Table(name="`order`")
+ */
+
 #[ORM\Entity(repositoryClass: OrderRepository::class)]
 #[ORM\Table(name: '`order`')]
 class Order
@@ -17,11 +22,25 @@ class Order
     #[ORM\Column()]
     private ?int $id = null;
 
+    /**
+ * @ORM\OneToMany(targetEntity=OrderItem::class, mappedBy="orderRef", cascade={"persist", "remove"}, orphanRemoval=true)
+ */
+
     #[ORM\OneToMany(mappedBy: 'orderRef', targetEntity: OrderItem::class, orphanRemoval: true)]
     private Collection $items;
 
+    /**
+     * @ORM\Column(type="string", length=255)
+     */
+
     #[ORM\Column(length: 255)]
-    private ?string $status = null;
+    private ?string $status = self::STATUS_CART;
+    /**
+     * An order that is in progress, not placed yet.
+     *
+     * @var string
+     */
+    const STATUS_CART = 'cart';
 
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private ?\DateTimeInterface $createdAt = null;
@@ -49,10 +68,18 @@ class Order
 
     public function addItem(OrderItem $item): self
     {
-        if (!$this->items->contains($item)) {
-            $this->items[] = $item;
-            $item->setOrderRef($this);
+        foreach($this->getItems() as $existingItem){
+            //if item exists, update quantity
+            if ($existingItem->equals($item)){
+                $existingItem->setQuantity(
+                    $existingItem->getQuantity() + $item->getQuantity()
+                );
+                return $this;
+            }
         }
+
+        $this->items[] = $item;
+        $item->setOrderRef($this);
 
         return $this;
     }
@@ -103,5 +130,34 @@ class Order
         $this->updatedAt = $updatedAt;
 
         return $this;
+    }
+
+    /**
+    * Removes all items from the order.
+    *
+    * @return $this
+    */
+
+    public function removeItems(): self
+    {
+        foreach($this->getItems() as $item){
+            $this->removeItem($item);
+        }
+        return $this;
+    }
+
+    /**
+    * Calculates the order total.
+    *
+    * @return float
+    */
+
+    public function getTotal() : float {
+        $total = 0;
+        foreach($this->getItems() as $item){
+            $total += $item->getTotal();
+        }
+
+        return $total;
     }
 }
